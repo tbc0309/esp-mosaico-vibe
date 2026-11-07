@@ -1,0 +1,20 @@
+Source: Microsoft Windows timezone registry and built-in System.TimeZoneInfo.
+Exported Windows build: 19045.7807
+https://learn.microsoft.com/dotnet/api/system.timezoneinfo
+https://learn.microsoft.com/dotnet/api/system.timezoneinfo.findsystemtimezonebyid
+
+Refresh definitions on an updated Windows machine:
+pwsh -File scripts/export_windows_timezones.ps1
+python scripts/generate_timezones.py
+python scripts/embed.py
+
+144 Windows timezone IDs and UTC/region display labels are exported from the
+Windows registry and tzres.dll.mui resources. Available language-pack labels
+are used; English is the fallback. Browser IANA IDs are mapped with the built-in
+Windows/.NET conversion APIs, without any downloaded mapping table.
+
+Runtime schedules are calculated by Windows TimeZoneInfo from 2020 through
+2100, deduplicated and embedded in firmware. Current and future government
+policy changes require a refreshed Windows export and firmware update.
+Normal builds use checked-in generated files and need neither Windows nor
+network access. No third-party timezone implementation is bundled.

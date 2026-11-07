@@ -1,0 +1,13 @@
+{
+  "project": "3dprint_pixelmonitor",
+  "version": "1.0.2",
+  "board": "lckfb-esp32s3r8n8",
+  "boardName": "LCKFB ESP32S3R8N8",
+  "projectName": "3dprint_pixelmonitor",
+  "target": "esp32s3",
+  "flashBytes": 8388608,
+  "appSlotBytes": 3604480,
+  "url": "https://github.com/tbc0309/idotmatrix-bambulab/releases/download/1.0.2/lckfb-esp32s3r8n8.bin",
+  "size": 1554320,
+  "sha256": "d31b1a0bf8b9f1379d0152b6379e5795539e7e4a6a15117410c84cc0f990fbab"
+}

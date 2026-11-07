@@ -1,0 +1,12 @@
+#pragma once
+#include <cstddef>
+namespace bridge::board {
+inline constexpr const char *id="@MATRIX_BOARD@";
+inline constexpr const char *name="@MATRIX_BOARD_name@";
+inline constexpr const char *target="@MATRIX_BOARD_target@";
+inline constexpr const char *projectName="@MATRIX_BOARD_project@";
+inline constexpr const char *artifactSuffix="@MATRIX_BOARD_artifactSuffix@";
+inline constexpr unsigned chipId=@MATRIX_BOARD_chipId@;
+inline constexpr size_t flashBytes=@MATRIX_BOARD_flashBytes@;
+inline constexpr size_t psramBytes=@MATRIX_BOARD_psramBytes@;
+}

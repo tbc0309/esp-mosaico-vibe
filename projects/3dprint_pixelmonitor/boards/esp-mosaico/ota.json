@@ -1,0 +1,13 @@
+{
+  "url": "https://github.com/tbc0309/esp-mosaico-vibe/releases/download/1.0.2/3dprint_pixelmonitor.bin",
+  "board": "esp-mosaico",
+  "flashBytes": 16777216,
+  "size": 2927584,
+  "boardName": "ESP-Mosaico",
+  "target": "esp32s31",
+  "appSlotBytes": 6750208,
+  "sha256": "ce7ca139d9d05c60f35c3bdaf64240b7aa68d9a4a11a600131158a573a29aae7",
+  "version": "1.0.2",
+  "project": "3dprint_pixelmonitor",
+  "projectName": "3dprint_pixelmonitor"
+}

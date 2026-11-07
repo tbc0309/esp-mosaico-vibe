@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "submodule/esp-mosaico-bsp",
+    "base": "5f88b91e1be055d1d3674364123b2779a1758377",
+    "patch": "bsp-power-display.patch"
+  },
+  {
+    "directory": "submodule/esp-mosaico-utils",
+    "base": "be151ae047014e79a9c7ae0092dd203844499003",
+    "patch": "iris-worker-idle.patch"
+  }
+]

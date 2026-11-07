@@ -1,0 +1,110 @@
+diff --git a/components/esp-mosaico-bsp/include/bsp/display.h b/components/esp-mosaico-bsp/include/bsp/display.h
+index a9a767c..a93583b 100644
+--- a/components/esp-mosaico-bsp/include/bsp/display.h
++++ b/components/esp-mosaico-bsp/include/bsp/display.h
+@@ -82,11 +82,13 @@ typedef struct {
+     bool enable_ppa_accel;
+     bool enable_touch;
+ #endif
++    uint8_t spi_queue_depth; /*!< QSPI transactions in flight; 0 keeps the driver default. Each uses an 8-line DMA bounce buffer. */
+ } bsp_display_config_t;
+ 
+ #define BSP_DISPLAY_DEFAULT_CONFIG() { \
+     .rotation = BSP_LCD_ROTATION_DEFAULT, \
+     BSP_DISPLAY_ADAPTER_CONFIG() \
++    .spi_queue_depth = 0, \
+ }
+ 
+ /* Non-LVGL callers must serialize panel operations with their renderer. */
+diff --git a/components/esp-mosaico-bsp/onboard/display.c b/components/esp-mosaico-bsp/onboard/display.c
+index aa8b656..5e1602a 100644
+--- a/components/esp-mosaico-bsp/onboard/display.c
++++ b/components/esp-mosaico-bsp/onboard/display.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <stdint.h>
++#include <string.h>
+ #include "bsp/esp_mosaico.h"
+ #include "driver/gpio.h"
+ #include "driver/spi_master.h"
+@@ -59,27 +60,11 @@ static const co5300_lcd_init_cmd_t s_vendor_init[] = {
+     {0x29, NULL, 0, 600},
+ };
+ 
+-/* The retained bootloader has already reset the CO5300, sent Sleep Out,
+- * programmed RGB565 mode and issued Display On.  Repeating either the reset
+- * or the two delayed commands blanks the splash for roughly 1.2 seconds.
+- * Keep only idempotent setup commands while the application adopts the bus. */
+-static const co5300_lcd_init_cmd_t s_handoff_init[] = {
+-    {0xFE, (uint8_t[]){0x20}, 1, 0},
+-    {0x19, (uint8_t[]){0x10}, 1, 0},
+-    {0x1C, (uint8_t[]){0xA0}, 1, 0},
+-    {0xFE, (uint8_t[]){0x00}, 1, 0},
+-    {0xC4, (uint8_t[]){0x80}, 1, 0},
+-    {0x3A, (uint8_t[]){0x55}, 1, 0},
+-#if CONFIG_BSP_CO5300_ENABLE_TE
+-    {0x35, (uint8_t[]){0x00}, 1, 0},
+-#endif
+-    {0x53, (uint8_t[]){0x20}, 1, 0},
+-    /* Preserve the boot brightness until the application applies its saved
+-     * value after the first frame. */
+-    {0x63, (uint8_t[]){0xFF}, 1, 0},
+-    {0x2A, (uint8_t[]){0x00, 0x00, 0x01, 0xDF}, 4, 0},
+-    {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0xDF}, 4, 0},
+-};
++/* The driver retains this pointer for Deep Standby recovery. Only the first
++ * boot-splash adoption may omit Sleep Out / Display On; every subsequent
++ * panel reset requires the complete vendor sequence. Updated during startup
++ * before LVGL owns the panel, then kept unchanged for the driver's lifetime. */
++static co5300_lcd_init_cmd_t s_panel_init[sizeof(s_vendor_init) / sizeof(s_vendor_init[0])];
+ 
+ /*
+  * Orientation is tracked as the 2x2 matrix mapping logical axes onto panel axes, so that a
+@@ -261,17 +246,31 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
+ 
+     esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, NULL, NULL);
+     io_config.flags.psram_dma_direct = false;
++    if (active.spi_queue_depth) {
++        io_config.trans_queue_depth = active.spi_queue_depth;
++    }
++    ESP_LOGI(TAG, "QSPI queue depth=%u, DMA bounce budget=%u bytes",
++             (unsigned)io_config.trans_queue_depth,
++             (unsigned)(io_config.trans_queue_depth * BSP_LCD_H_RES * BSP_LCD_DMA_CHUNK_LINES * BSP_LCD_BITS_PER_PIXEL / 8));
+     ret = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_HOST, &io_config, &s_panel_io);
+     if (ret != ESP_OK) {
+         spi_bus_free(BSP_LCD_SPI_HOST);
+         s_spi_bus_initialized = false;
+         return ret;
+     }
++    memcpy(s_panel_init, s_vendor_init, sizeof(s_panel_init));
++    if (boot_panel_ready) {
++        for (size_t i = 0; i < sizeof(s_panel_init) / sizeof(s_panel_init[0]); ++i) {
++            if (s_panel_init[i].cmd == 0x11 || s_panel_init[i].cmd == 0x29 ||
++                    s_panel_init[i].cmd == 0x51) {
++                /* DCS NOP preserves the table length retained by the driver. */
++                s_panel_init[i] = (co5300_lcd_init_cmd_t){0x00, NULL, 0, 0};
++            }
++        }
++    }
+     const co5300_vendor_config_t vendor_config = {
+-        .init_cmds = boot_panel_ready ? s_handoff_init : s_vendor_init,
+-        .init_cmds_size = boot_panel_ready
+-            ? sizeof(s_handoff_init) / sizeof(s_handoff_init[0])
+-            : sizeof(s_vendor_init) / sizeof(s_vendor_init[0]),
++        .init_cmds = s_panel_init,
++        .init_cmds_size = sizeof(s_panel_init) / sizeof(s_panel_init[0]),
+         .flags.use_qspi_interface = true,
+     };
+     const esp_lcd_panel_dev_config_t panel_config = {
+@@ -291,7 +290,9 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
+     if (!boot_panel_ready) {
+         ESP_GOTO_ON_ERROR(esp_lcd_panel_reset(s_panel), fail, TAG, "reset CO5300 failed");
+     }
+-    ESP_GOTO_ON_ERROR(esp_lcd_panel_init(s_panel), fail, TAG, "initialize CO5300 failed");
++    ret = esp_lcd_panel_init(s_panel);
++    memcpy(s_panel_init, s_vendor_init, sizeof(s_panel_init));
++    ESP_GOTO_ON_ERROR(ret, fail, TAG, "initialize CO5300 failed");
+     ESP_GOTO_ON_ERROR(esp_lcd_panel_set_gap(s_panel, BSP_LCD_X_GAP, BSP_LCD_Y_GAP),
+                       fail, TAG, "set CO5300 gap failed");
+     ESP_GOTO_ON_ERROR(apply_panel_orientation(active.rotation), fail, TAG, "set CO5300 orientation failed");

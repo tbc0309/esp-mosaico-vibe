@@ -1,0 +1,74 @@
+diff --git a/ESP-Iris/components/esp_iris/include/esp_iris.h b/ESP-Iris/components/esp_iris/include/esp_iris.h
+index fe71df8..8761d99 100644
+--- a/ESP-Iris/components/esp_iris/include/esp_iris.h
++++ b/ESP-Iris/components/esp_iris/include/esp_iris.h
+@@ -163,6 +163,10 @@ typedef struct {
+ esp_err_t esp_iris_start(void);
+ esp_err_t esp_iris_stop(void);
+ bool esp_iris_is_started(void);
++/* Set the worker's idle polling ceiling (1..1000 ms, default 10 ms).
++ * RX/service notifications still wake it immediately; active-transfer fairness
++ * and protocol timeouts are unchanged. Thread-safe, task context only. */
++esp_err_t esp_iris_set_worker_idle_ms(uint32_t timeout_ms);
+ esp_err_t esp_iris_get_status(esp_iris_status_t *out_status);
+ esp_err_t esp_iris_ota_get_status(esp_iris_ota_status_t *out_status);
+ 
+diff --git a/ESP-Iris/components/esp_iris/src/esp_iris.c b/ESP-Iris/components/esp_iris/src/esp_iris.c
+index 5d9cc87..1b83dfa 100644
+--- a/ESP-Iris/components/esp_iris/src/esp_iris.c
++++ b/ESP-Iris/components/esp_iris/src/esp_iris.c
+@@ -19,6 +19,10 @@
+ #define IRIS_STOP_TIMEOUT_MS 1000U
+ #define IRIS_MAX_TASK_MEMORY_RECORDS 128U
+ #define IRIS_WORKER_RUN_BUDGET_US (20LL * 1000LL)
++#define IRIS_WORKER_DEFAULT_IDLE_MS 10U
++#define IRIS_WORKER_MAX_IDLE_MS 1000U
++
++static atomic_uint s_worker_idle_ms = IRIS_WORKER_DEFAULT_IDLE_MS;
+ 
+ iris_runtime_t g_iris;
+ 
+@@ -651,13 +655,24 @@ static bool service_link(iris_runtime_t *runtime)
+     return progressed;
+ }
+ 
++esp_err_t esp_iris_set_worker_idle_ms(uint32_t timeout_ms)
++{
++    if (timeout_ms == 0 || timeout_ms > IRIS_WORKER_MAX_IDLE_MS) {
++        return ESP_ERR_INVALID_ARG;
++    }
++    atomic_store(&s_worker_idle_ms, timeout_ms);
++    iris_notify_worker(&g_iris);
++    return ESP_OK;
++}
++
+ static void iris_worker(void *argument)
+ {
+     iris_runtime_t *runtime = argument;
+-    const TickType_t idle_ticks = pdMS_TO_TICKS(10) > 0
+-        ? pdMS_TO_TICKS(10) : 1;
+     int64_t active_budget_us = 0;
+     while (runtime->running) {
++        const uint32_t idle_ms = atomic_load(&s_worker_idle_ms);
++        const TickType_t idle_ticks = pdMS_TO_TICKS(idle_ms) > 0
++            ? pdMS_TO_TICKS(idle_ms) : 1;
+         const int64_t active_start_us = esp_timer_get_time();
+         iris_crash_recovery_poll(runtime, active_start_us);
+         iris_services_poll(runtime);
+diff --git a/ESP-Iris/components/esp_iris/src/esp_iris_disabled.c b/ESP-Iris/components/esp_iris/src/esp_iris_disabled.c
+index 3160c22..9fc969d 100644
+--- a/ESP-Iris/components/esp_iris/src/esp_iris_disabled.c
++++ b/ESP-Iris/components/esp_iris/src/esp_iris_disabled.c
+@@ -14,6 +14,12 @@ esp_err_t esp_iris_stop(void)
+     return ESP_ERR_NOT_SUPPORTED;
+ }
+ 
++esp_err_t esp_iris_set_worker_idle_ms(uint32_t timeout_ms)
++{
++    (void)timeout_ms;
++    return ESP_ERR_NOT_SUPPORTED;
++}
++
+ bool esp_iris_is_started(void)
+ {
+     return false;

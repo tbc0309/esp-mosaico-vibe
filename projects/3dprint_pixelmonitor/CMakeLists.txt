@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.16)
+set(MOSAICO_UTILS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../submodule/esp-mosaico-utils")
+set(MOSAICO_BSP_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../submodule/esp-mosaico-bsp")
+if(NOT SDKCONFIG)
+    set(SDKCONFIG "${CMAKE_BINARY_DIR}/sdkconfig")
+endif()
+if(NOT SDKCONFIG_DEFAULTS)
+    set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;sdkconfig.application.defaults")
+endif()
+set(EXCLUDE_COMPONENTS app_hello app_display)
+list(APPEND EXTRA_COMPONENT_DIRS
+    "${MOSAICO_UTILS_ROOT}/esp-mosaico-vibe-mode/components/esp_mosaico_app_recovery"
+    )
+include("${MOSAICO_UTILS_ROOT}/esp-mosaico-vibe-mode/cmake/mosaico_idf_project.cmake")
+project(3dprint_pixelmonitor VERSION 1.0.2)
+include("${MOSAICO_UTILS_ROOT}/mosaico-tools/cmake/system_update.cmake")
